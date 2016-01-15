@@ -96,8 +96,8 @@ class Affiliates_WooCommerce_Views {
 				}
 				foreach( $referrals as $referral ) {
 					$order_id = $referral->post_id;
-					$order = new WC_Order( $order_id );
-
+					$order = new WC_Order( $order_id );					
+					
 					$output .= '<table class="shop_table order_details">';
 					$output .= '<thead>';
 					$output .= '<tr>';
@@ -125,13 +125,13 @@ class Affiliates_WooCommerce_Views {
 							$output .= '<td class="product-name">';
 							$output .= apply_filters( 'woocommerce_order_table_product_title', '<a href="' . get_permalink( $item['product_id'] ) . '">' . $item['name'] . '</a>', $item ) . ' ';
 							$output .= apply_filters( 'woocommerce_order_table_item_quantity', '<strong class="product-quantity">&times; ' . $item['qty'] . '</strong>', $item );
-							$item_meta = new WC_Order_Item_Meta( $item['item_meta'] );
+							$item_meta = new WC_Order_Item_Meta( $item );
 							$item_meta->display();
 							$output .= '</td><td class="product-total">' . $order->get_formatted_line_subtotal( $item ) . '</td></tr>';
 						}
 					}
 					$output .= '</tbody>';
-					$output .= '</table>';
+					$output .= '</table>';					
 				}
 			}
 		}
@@ -150,7 +150,9 @@ class Affiliates_WooCommerce_Views {
 		global $wpdb;
 		$referrals_table = _affiliates_get_tablename( 'referrals' );
 		$where = " WHERE affiliate_id = %d";
+		$where .= " AND type = %s";
 		$values = array( $affiliate_id );
+		$values[] = 'sale';
 		
 		
 		switch( $order_by ) {
