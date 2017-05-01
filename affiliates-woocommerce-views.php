@@ -20,7 +20,7 @@
  * Plugin Name: Affiliates WooCommerce Views
  * Plugin URI: http://www.itthinx.com/plugins/affiliates-woocommerce-views
  * Description: Views toolbox for the Affiliates WooCommerce integrations. Requires <a href="http://www.itthinx.com/plugins/affiliates/">Affiliates</a>, <a href="http://www.itthinx.com/plugins/affiliates-pro/">Affiliates Pro</a> or <a href="http://www.itthinx.com/plugins/affiliates-enterprise/">Affiliates Enterprise</a>.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: itthinx
  * Author URI: http://www.itthinx.com
  * Donate-Link: http://www.itthinx.com
@@ -44,18 +44,23 @@ class Affiliates_WooCommerce_Views {
 	 */
 	public static function wp_init() {
 		if ( defined( 'AFFILIATES_CORE_VERSION' ) ) {
-			add_shortcode( 'affiliates_woocommerce_orders', array( __CLASS__, 'affiliates_woocommerce_orders' ) );
+			if ( !defined( 'WC_VERSION' ) || ( version_compare( WC_VERSION , '3.0' ) < 0 ) ) {
+				add_shortcode( 'affiliates_woocommerce_orders', array( __CLASS__, 'affiliates_woocommerce_orders_2' ) );
+			} else {
+				add_shortcode( 'affiliates_woocommerce_orders', array( __CLASS__, 'affiliates_woocommerce_orders' ) );
+			}
 		}
 	}
 
 	/**
 	 * Renders the [affiliates_woocommerce_orders] shortcode.
+	 * Woocommerce 2.x
 	 * 
 	 * @param array $atts
 	 * @param string $content not used
 	 * @return string
 	 */
-	public static function affiliates_woocommerce_orders( $atts, $content = null ) {
+	public static function affiliates_woocommerce_orders_2( $atts, $content = null ) {
 		global $wpdb, $woocommerce;
 		$output = "";
 		$options = shortcode_atts(
@@ -126,7 +131,7 @@ class Affiliates_WooCommerce_Views {
 							$output .= apply_filters( 'woocommerce_order_table_product_title', '<a href="' . get_permalink( $item['product_id'] ) . '">' . $item['name'] . '</a>', $item ) . ' ';
 							$output .= apply_filters( 'woocommerce_order_table_item_quantity', '<strong class="product-quantity">&times; ' . $item['qty'] . '</strong>', $item );
 							$item_meta = new WC_Order_Item_Meta( $item['item_meta'] );
-							$output .= $item_meta->display(false, true);
+							$item_meta->display();
 							$output .= '</td><td class="product-total">' . $order->get_formatted_line_subtotal( $item ) . '</td></tr>';
 						}
 					}
@@ -134,6 +139,97 @@ class Affiliates_WooCommerce_Views {
 					$output .= '</table>';
 				}
 			}
+		}
+		return $output;
+	}
+
+	/**
+	 * Renders the [affiliates_woocommerce_orders] shortcode.
+	 * Woocommerce 3.x
+	 * 
+	 * @param array $atts
+	 * @param string $content not used
+	 * @return string
+	 */
+	public static function affiliates_woocommerce_orders( $atts, $content = null ) {
+		global $wpdb, $woocommerce;
+		$output = "";
+		$options = shortcode_atts(
+				array(
+						'status'     => AFFILIATES_REFERRAL_STATUS_ACCEPTED,
+						'from'       => !empty( $_POST['from_date'] ) && empty( $_POST['clear_filters'] ) ? $_POST['from_date'] : null,
+						'until'      => !empty( $_POST['thru_date'] ) && empty( $_POST['clear_filters'] )? $_POST['thru_date'] : null,
+						'for'        => null,
+						'order_by'   => 'date',
+						'order'      => 'DESC',
+						'limit'      => null,
+						'auto_limit' => '20',
+						'show_limit' => 'Showing up to %d orders.'
+				),
+				$atts
+				);
+		extract( $options );
+
+		self::for_from_until( $for, $from, $until );
+
+		if ( ( intval( $auto_limit ) > 0 ) && ( $from === null || $until === null ) ) {
+			$limit = intval( $auto_limit );
+		}
+
+		$user_id = get_current_user_id();
+		if ( $user_id && affiliates_user_is_affiliate( $user_id ) ) {
+			$affiliates_table = _affiliates_get_tablename( 'affiliates' );
+			$affiliates_users_table = _affiliates_get_tablename( 'affiliates_users' );
+			if ( $affiliate_id = $wpdb->get_var( $wpdb->prepare(
+					"SELECT au.affiliate_id FROM $affiliates_users_table au LEFT JOIN $affiliates_table a ON au.affiliate_id = a.affiliate_id WHERE au.user_id = %d AND a.status = 'active'",
+					intval( $user_id )
+					))) {
+						$referrals = self::get_affiliate_referrals( $affiliate_id, $from, $until, $status, $order_by, $order, $limit );
+						if ( !empty( $show_limit ) && $limit > 0 ) {
+							$output .= '<p class="show_limit">';
+							$output .= sprintf( $show_limit, $limit );
+							$output .= '</p>';
+						}
+						foreach( $referrals as $referral ) {
+							$order_id = $referral->post_id;
+							$order = new WC_Order( $order_id );
+
+							$output .= '<table class="shop_table order_details">';
+							$output .= '<thead>';
+							$output .= '<tr>';
+							$output .= '<th class="product-name">';
+							$output .= sprintf( __( '%s, Order #%d', 'woocommerce' ), date_i18n( get_option( 'date_format' ), strtotime( $order->get_date_created() ) ), $order_id );
+							$output .= '</th>';
+							$output .= '<th class="product-total">';
+							$output .= __( 'Total', 'woocommerce' );
+							$output .= '</th>';
+							$output .= '</tr>';
+							$output .= '</thead>';
+							$output .= '<tfoot>';
+							$output .= '<tr>';
+							$output .= '<th scope="row">' . __( 'Referral amount' ) . '</th>';
+							$output .= '<td>';
+							$output .= '<span class="amount">' . sprintf( get_woocommerce_price_format(), get_woocommerce_currency_symbol( $referral->currency_id ), $referral->amount ) . '</span>';
+							$output .= '</td>';
+							$output .= '</tr>';
+							$output .= '</tfoot>';
+							$output .= '<tbody>';
+							if ( sizeof( $order->get_items() ) > 0 ) {
+								foreach( $order->get_items() as $item ) {
+									$_product = wc_get_product( $item['variation_id'] ? $item['variation_id'] : $item['product_id'] );
+									$output .= '<tr class = "' . esc_attr( apply_filters( 'woocommerce_order_table_item_class', 'order_table_item', $item, $order ) ) . '">';
+									$output .= '<td class="product-name">';
+									$output .= apply_filters( 'woocommerce_order_table_product_title', '<a href="' . get_permalink( $item['product_id'] ) . '">' . $item['name'] . '</a>', $item ) . ' ';
+									$output .= apply_filters( 'woocommerce_order_table_item_quantity', '<strong class="product-quantity">&times; ' . $item['qty'] . '</strong>', $item );
+									$item_meta = new WC_Order_Item_Meta( $item['item_meta'] );
+									$item_meta->display();
+									$output .= '</td><td class="product-total">' . $order->get_formatted_line_subtotal( $item ) . '</td></tr>';
+								}
+							}
+							$output .= '</tbody>';
+							$output .= '</table>';
+						}
+					}
 		}
 		return $output;
 	}
@@ -149,10 +245,9 @@ class Affiliates_WooCommerce_Views {
 	public static function get_affiliate_referrals( $affiliate_id, $from_date = null , $thru_date = null, $status = null, $order_by = 'datetime', $order = 'DESC', $limit = null ) {
 		global $wpdb;
 		$referrals_table = _affiliates_get_tablename( 'referrals' );
-		$where = " WHERE affiliate_id = %d";
+		$where = " WHERE type = 'sale' AND affiliate_id = %d";
 		$values = array( $affiliate_id );
-		
-		
+
 		switch( $order_by ) {
 			case 'date' :
 				$order_by = 'datetime';
@@ -171,7 +266,7 @@ class Affiliates_WooCommerce_Views {
 				$order = 'DESC';
 		}
 		$order_query = ' ORDER BY ' . $order_by . ' ' . $order;
-		
+
 		$limit_query = '';
 		if ( $limit !== null ) {
 			$limit = intval( $limit );
@@ -255,6 +350,6 @@ class Affiliates_WooCommerce_Views {
 			}
 		}
 	}
-	
+
 }
 Affiliates_WooCommerce_Views::init();

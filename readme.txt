@@ -3,8 +3,8 @@ Contributors: itthinx
 Donate link: http://www.itthinx.com/plugins/affiliates-woocommerce-views
 Tags: affiliate, affiliates, woocommerce, order, orders
 Requires at least: 3.3
-Tested up to: 3.5.1
-Stable tag: 1.0.0
+Tested up to: 4.7.4
+Stable tag: 1.1.0
 License: GPLv3
 
 Views toolbox for the Affiliates WooCommerce integrations.
